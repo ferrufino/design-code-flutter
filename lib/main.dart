@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.done) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            home: LoginScreen()//(FirebaseAuth.instance.currentUser == null) ? LoginScreen() : HomeScreen(),
+            home: (FirebaseAuth.instance.currentUser == null) ? LoginScreen() : HomeScreen(),
           );
         } else {
           return MaterialApp(

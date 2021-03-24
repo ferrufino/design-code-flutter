@@ -9,6 +9,9 @@ import 'package:flutter/material.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -18,21 +21,48 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final _storage = FirebaseStorage.instance;
 
   var name = "Loading...";
   var bio = "Loading...";
-
-  final List<String> badges = [
-    'badge-01.png',
-    'badge-02.png',
-    'badge-03.png',
-    'badge-04.png',
-  ];
+  var photoURL = FirebaseAuth.instance.currentUser.photoURL;
+  final List<String> badges = [];
 
   @override
   void initState() {
     super.initState();
     loadUserData();
+    loadBadges();
+  }
+
+  Future getImage() async {
+    //this function will execute in parallel with other processes
+    //and represents a delayed computation.
+    //This makes sense as a user will need time to select the image they want.
+    //We don't want to stop every other computation until the user picks out an image.
+    final pickedFile =
+        await ImagePicker().getImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      File _image = File(pickedFile.path);
+      _storage
+          .ref("profile_pictures/${_auth.currentUser.uid}.jpg")
+          .putFile(_image)
+          .then((snapshot) {
+        snapshot.ref.getDownloadURL().then((url) {
+          _firestore
+              .collection("users")
+              .doc(_auth.currentUser.uid)
+              .update({'profilePic': url}).then(
+            (snapshot) {
+              _auth.currentUser.updateProfile(photoURL: url);
+            },
+          );
+        });
+      });
+      print("A file was selected");
+    } else {
+      print("A file was not selected");
+    }
   }
 
   void loadUserData() {
@@ -85,6 +115,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             );
           });
+    });
+  }
+
+  void loadBadges() {
+    _firestore
+        .collection("users")
+        .doc(_auth.currentUser.uid)
+        .get()
+        .then((snapshot) {
+      for (var badge in snapshot.data()["badges"]) {
+        _storage.ref("badges/$badge").getDownloadURL().then((url) {
+          setState(() {
+            badges.add(url);
+          });
+        });
+      }
     });
   }
 
@@ -217,32 +263,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: EdgeInsets.symmetric(horizontal: 20.0),
                       child: Row(
                         children: [
-                          Container(
-                            child: Padding(
-                              padding: EdgeInsets.all(6.0),
-                              child: Container(
+                          GestureDetector(
+                            onTap: () {
+                              print("Profile Picture Tapped!");
+                              getImage();
+                            },
+                            child: Container(
+                              child: Padding(
                                 padding: EdgeInsets.all(6.0),
-                                child: CircleAvatar(
-                                  backgroundImage:
-                                      AssetImage('asset/images/profile.jpg'),
-                                  radius: 30.0,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: kBackgroundColor,
-                                  borderRadius: BorderRadius.circular(42.0),
+                                child: Container(
+                                  padding: EdgeInsets.all(6.0),
+                                  child: CircleAvatar(
+                                    backgroundColor: Color(0xFFE7EEFB),
+                                    child: (photoURL != null)
+                                        ? ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(30.0),
+                                            child: Image.network(photoURL),
+                                          )
+                                        : Icon(Icons.person),
+                                    radius: 30.0,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: kBackgroundColor,
+                                    borderRadius: BorderRadius.circular(42.0),
+                                  ),
                                 ),
                               ),
-                            ),
-                            height: 84.0,
-                            width: 84.0,
-                            decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                colors: [
-                                  Color(0xFF00AEFF),
-                                  Color(0xFF0076FF),
-                                ],
+                              height: 84.0,
+                              width: 84.0,
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  colors: [
+                                    Color(0xFF00AEFF),
+                                    Color(0xFF0076FF),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(42.0),
                               ),
-                              borderRadius: BorderRadius.circular(42.0),
                             ),
                           ),
                           SizedBox(width: 16.0),
@@ -316,7 +374,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ],
                             ),
-                            child: Image.asset('asset/badges/${badges[index]}'),
+                            child: Image.network('${badges[index]}'),
                           );
                         },
                       ),
